@@ -15,18 +15,20 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 
-from ev_core import (
+from .ev_core import (
     EVStagHuntModel,
     set_initial_adopters,
     final_mean_adoption_vs_ratio,
     phase_sweep_X0_vs_ratio,
+    phase_sweep_X0_vs_I0,
 )
-from ev_plotting import (
+from .ev_plotting import (
     plot_fanchart,
     plot_spaghetti,
     plot_density,
     plot_ratio_sweep,
     plot_phase_plot,
+    plot_phase_plot_X0_I0,
 )
 
 
@@ -375,6 +377,60 @@ def phase_sweep_df(
             rows.append((float(X0), float(ratio), float(X_final[j, i])))
     return pd.DataFrame(rows, columns=["X0", "ratio", "X_final"])
 
+def phase_sweep_X0_I0_df(
+    max_workers: int | None = None,
+    backend: str = "process",
+    X0_values: Optional[np.ndarray] = None,
+    I0_values: Optional[np.ndarray] = None,
+    scenario_kwargs: Optional[Dict] = None,
+    batch_size: int = 16,
+    T: int = 250,
+    strategy_choice_func: str = "logit",
+    tau: float = 1.0,
+) -> pd.DataFrame:
+    """Compute tidy DataFrame of X* over (X0, I0)."""
+    if X0_values is None:
+        X0_values = np.linspace(0.0, 1.0, 21)
+    if I0_values is None:
+        I0_values = np.linspace(0.0, 0.3, 31)
+
+    scenario = {
+        "ratio": 2.3,
+        "beta_I": 2.0,
+        "b": 1.0,
+        "g_I": 0.05,
+        "network_type": "BA",
+        "n_nodes": 120,
+        "p": 0.05,
+        "m": 2,
+    }
+    if scenario_kwargs:
+        scenario.update(scenario_kwargs)
+
+    X_final = phase_sweep_X0_vs_I0(
+        X0_values,
+        I0_values,
+        ratio=scenario["ratio"],
+        beta_I=scenario["beta_I"],
+        b=scenario["b"],
+        g_I=scenario["g_I"],
+        T=T,
+        network_type=scenario["network_type"],
+        n_nodes=scenario["n_nodes"],
+        p=scenario["p"],
+        m=scenario["m"],
+        batch_size=batch_size,
+        strategy_choice_func=strategy_choice_func,
+        tau=tau,
+        max_workers=max_workers or 1,
+        backend=backend,
+    )
+
+    rows = []
+    for i, X0 in enumerate(X0_values):
+        for j, I0 in enumerate(I0_values):
+            rows.append((float(X0), float(I0), float(X_final[j, i])))
+    return pd.DataFrame(rows, columns=["X0", "I0", "X_final"])
 
 def plot_intervention_fanchart(
     baseline_X: List[np.ndarray],

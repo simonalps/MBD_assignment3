@@ -25,6 +25,7 @@ The equation for growth is:
 I(t+1) = I(t) + g_I * I(t)
 """
 
+import os
 from mesa import Agent, Model
 from mesa.time import SimultaneousActivation
 from mesa.space import NetworkGrid
@@ -597,6 +598,127 @@ def phase_sweep_X0_vs_ratio(
     else:
         for i, args in enumerate(tasks):
             row = _row_for_ratio_task(args)
+            X_final[i, :] = row
+
+    return X_final
+
+
+def _row_for_I0_task(args: Dict) -> np.ndarray:
+    """Worker to compute one heatmap row for a fixed I0.
+
+    Returns an array of mean final adoption across provided X0_values.
+    """
+    I0 = args["I0"]
+    ratio = args["ratio"]
+    X0_values = args["X0_values"]
+    beta_I = args["beta_I"]
+    b = args["b"]
+    g_I = args["g_I"]
+    T = args["T"]
+    network_type = args["network_type"]
+    n_nodes = args["n_nodes"]
+    p = args["p"]
+    m = args["m"]
+    batch_size = args["batch_size"]
+    strategy_choice_func = args["strategy_choice_func"]
+    tau = args["tau"]
+
+    row = np.empty(len(X0_values))
+
+    for j, X0 in enumerate(X0_values):
+        finals = []
+        for _ in range(batch_size):
+            x_star = run_network_trial(
+                X0_frac=X0,
+                ratio=ratio,
+                I0=I0,                      
+                beta_I=beta_I,
+                b=b,
+                g_I=g_I,
+                T=T,
+                network_type=network_type,
+                n_nodes=n_nodes,
+                p=p,
+                m=m,
+                seed=np.random.randint(0, 2**31 - 1),
+                collect=False,
+                strategy_choice_func=strategy_choice_func,
+                tau=tau,
+            )
+            finals.append(x_star)
+
+        row[j] = float(np.mean(finals))
+
+    return row
+
+
+def phase_sweep_X0_vs_I0(
+    X0_values: Iterable[float],
+    I0_values: Iterable[float],
+    *,
+    ratio: float = 2.3,
+    beta_I: float = 2.0,
+    b: float = 1.0,
+    g_I: float = 0.05,
+    T: int = 250,
+    network_type: str = "random",
+    n_nodes: int = 120,
+    p: float = 0.05,
+    m: int = 2,
+    batch_size: int = 16,
+    strategy_choice_func: str = "random",
+    tau: float = 1.0,
+    max_workers: int | None = None,
+    backend: str = "process",
+) -> np.ndarray:
+    """Compute a heatmap matrix of mean final adoption X* over (X0, I0).
+
+    Returns an array of shape (len(I0_values), len(X0_values)):
+    rows = I0 values, columns = X0 values.
+    """
+    X0_values = list(X0_values)
+    I0_values = list(I0_values)
+
+    X_final = np.empty((len(I0_values), len(X0_values)), dtype=float)
+
+    tasks: List[Dict] = []
+    for I0 in I0_values:
+        tasks.append(
+            {
+                "ratio": ratio,
+                "X0_values": X0_values,
+                "I0": I0,
+                "beta_I": beta_I,
+                "b": b,
+                "g_I": g_I,
+                "T": T,
+                "network_type": network_type,
+                "n_nodes": n_nodes,
+                "p": p,
+                "m": m,
+                "batch_size": batch_size,
+                "strategy_choice_func": strategy_choice_func,
+                "tau": tau,
+            }
+        )
+
+    if max_workers is None:
+        try:
+            max_workers = os.cpu_count() or 1
+        except Exception:
+               max_workers = 1
+
+    Executor = ProcessPoolExecutor if backend == "process" and max_workers > 1 else ThreadPoolExecutor
+
+    if max_workers > 1:
+        with Executor(max_workers=max_workers) as ex:
+            futures = [ex.submit(_row_for_I0_task, args) for args in tasks]
+            for i, fut in enumerate(futures):
+                row = fut.result()
+                X_final[i, :] = row
+    else:
+        for i, args in enumerate(tasks):
+            row = _row_for_I0_task(args)
             X_final[i, :] = row
 
     return X_final

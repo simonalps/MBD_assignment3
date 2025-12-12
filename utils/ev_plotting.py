@@ -174,3 +174,38 @@ def plot_phase_plot(phase_df: pd.DataFrame, out_path: Optional[str] = None) -> s
     plt.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close()
     return out_path
+
+def plot_phase_plot_X0_I0(
+    df: pd.DataFrame, out_path: Optional[str] = None
+) -> str:
+    """Plot heatmap from tidy DataFrame with columns ['X0','I0','X_final']."""
+    pivot = (
+        df.pivot(index="I0", columns="X0", values="X_final")
+        .sort_index()
+        .sort_index(axis=1)
+    )
+
+    X0s = pivot.columns.to_numpy()
+    I0s = pivot.index.to_numpy()
+
+    plt.figure(figsize=(7, 4))
+    im = plt.imshow(
+        pivot.to_numpy(),
+        origin="lower",
+        extent=[X0s[0], X0s[-1], I0s[0], I0s[-1]],
+        aspect="auto",
+        vmin=0,
+        vmax=1,
+        cmap="plasma",
+    )
+    plt.colorbar(im, label="Final adoption X*")
+    plt.xlabel("X0 (initial adoption)")
+    plt.ylabel("I0 (initial infrastructure)")
+    plt.title("Phase plot: X* over X0 and I0")
+
+    if out_path is None:
+        out_path = "phase_X0_I0.png"
+
+    plt.savefig(out_path, dpi=140, bbox_inches="tight")
+    plt.close()
+    return out_path
