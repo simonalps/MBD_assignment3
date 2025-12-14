@@ -218,6 +218,8 @@ class EVStagHuntModel(Model):
         # Build graph
         if network_type == "BA":
             G = nx.barabasi_albert_graph(n_nodes, m, seed=seed)
+        elif network_type == "WS":
+            G = nx.watts_strogatz_graph(n_nodes, 2*m, p, seed=seed)
         else:
             G = nx.erdos_renyi_graph(n_nodes, p, seed=seed)
         self.G = G
