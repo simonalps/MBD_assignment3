@@ -22,6 +22,7 @@ from .ev_core import (
     final_mean_adoption_vs_ratio,
     phase_sweep_X0_vs_ratio,
     phase_sweep_X0_vs_I0,
+    run_network_trial,
 )
 from .ev_plotting import (
     plot_fanchart,
@@ -414,61 +415,6 @@ def phase_sweep_df(
             rows.append((float(X0), float(ratio), float(X_final[j, i])))
     return pd.DataFrame(rows, columns=["X0", "ratio", "X_final"])
 
-def phase_sweep_X0_I0_df(
-    max_workers: int | None = None,
-    backend: str = "process",
-    X0_values: Optional[np.ndarray] = None,
-    I0_values: Optional[np.ndarray] = None,
-    scenario_kwargs: Optional[Dict] = None,
-    batch_size: int = 16,
-    T: int = 250,
-    strategy_choice_func: str = "logit",
-    tau: float = 1.0,
-) -> pd.DataFrame:
-    """Compute tidy DataFrame of X* over (X0, I0)."""
-    if X0_values is None:
-        X0_values = np.linspace(0.0, 1.0, 21)
-    if I0_values is None:
-        I0_values = np.linspace(0.0, 0.3, 31)
-
-    scenario = {
-        "ratio": 2.3,
-        "beta_I": 2.0,
-        "b": 1.0,
-        "g_I": 0.05,
-        "network_type": "BA",
-        "n_nodes": 120,
-        "p": 0.05,
-        "m": 2,
-    }
-    if scenario_kwargs:
-        scenario.update(scenario_kwargs)
-
-    X_final = phase_sweep_X0_vs_I0(
-        X0_values,
-        I0_values,
-        ratio=scenario["ratio"],
-        beta_I=scenario["beta_I"],
-        b=scenario["b"],
-        g_I=scenario["g_I"],
-        T=T,
-        network_type=scenario["network_type"],
-        n_nodes=scenario["n_nodes"],
-        p=scenario["p"],
-        m=scenario["m"],
-        batch_size=batch_size,
-        strategy_choice_func=strategy_choice_func,
-        tau=tau,
-        max_workers=max_workers or 1,
-        backend=backend,
-    )
-
-    rows = []
-    for i, X0 in enumerate(X0_values):
-        for j, I0 in enumerate(I0_values):
-            rows.append((float(X0), float(I0), float(X_final[j, i])))
-    return pd.DataFrame(rows, columns=["X0", "I0", "X_final"])
-
 def plot_intervention_fanchart(
     baseline_X: List[np.ndarray],
     subsidy_X: List[np.ndarray],
@@ -827,6 +773,180 @@ def run_intervention_example(
     img_path = plot_fanchart(traces_df)
     return baseline_df, subsidy_df, img_path
 
+# ------------------------------------------------------
+#   PART 1 ADDITIONS
+# ------------------------------------------------------
+
+def phase_sweep_X0_I0_df(
+    max_workers: int | None = None,
+    backend: str = "process",
+    X0_values: Optional[np.ndarray] = None,
+    I0_values: Optional[np.ndarray] = None,
+    scenario_kwargs: Optional[Dict] = None,
+    batch_size: int = 16,
+    T: int = 250,
+    strategy_choice_func: str = "logit",
+    tau: float = 1.0,
+) -> pd.DataFrame:
+    """Compute tidy DataFrame of X* over (X0, I0)."""
+
+    if X0_values is None:
+        X0_values = np.linspace(0.0, 1.0, 21)
+    if I0_values is None:
+        I0_values = np.linspace(0.0, 0.3, 31)
+
+    scenario = {
+        "ratio": 2.3,
+        "beta_I": 2.0,
+        "b": 1.0,
+        "g_I": 0.05,
+        "network_type": "BA",
+        "n_nodes": 120,
+        "p": 0.05,
+        "m": 2,
+    }
+    if scenario_kwargs:
+        scenario.update(scenario_kwargs)
+
+    X_final = phase_sweep_X0_vs_I0(
+        X0_values,
+        I0_values,
+        ratio=scenario["ratio"],
+        beta_I=scenario["beta_I"],
+        b=scenario["b"],
+        g_I=scenario["g_I"],
+        T=T,
+        network_type=scenario["network_type"],
+        n_nodes=scenario["n_nodes"],
+        p=scenario["p"],
+        m=scenario["m"],
+        batch_size=batch_size,
+        strategy_choice_func=strategy_choice_func,
+        tau=tau,
+        max_workers=max_workers or 1,
+        backend=backend,
+    )
+
+    rows = []
+    for i, X0 in enumerate(X0_values):
+        for j, I0 in enumerate(I0_values):
+            rows.append((float(X0), float(I0), float(X_final[j, i])))
+
+    return pd.DataFrame(rows, columns=["X0", "I0", "X_final"])
+
+def phase_trajectories_grid_df(
+    *,
+    X0_values: np.ndarray,
+    I0_values: np.ndarray,
+    T: int = 200,
+    scenario_kwargs: Optional[Dict] = None,
+    seed_base: int = 0,
+    strategy_choice_func: str = "imitate",
+    tau: float = 1.0,
+) -> pd.DataFrame:
+    """Collect phase-plane trajectories (X(t), I(t)) for a grid of initial conditions.
+
+    Returns a long DataFrame with columns:
+      - run_id: unique integer per (X0, I0) pair
+      - t: time index
+      - X: adoption fraction
+      - I: infrastructure level
+      - X0, I0: initial condition labels (for grouping/plotting)
+    """
+    if scenario_kwargs is None:
+        scenario_kwargs = {}
+
+    rows = []
+    run_id = 0
+    for I0 in I0_values:
+        for X0 in X0_values:
+            scenario = dict(scenario_kwargs)
+            scenario["X0_frac"] = float(X0)
+            scenario["I0"] = float(I0)
+
+            seed = int(seed_base + run_id)
+            X_ts, I_ts, _df_model = run_timeseries_trial(
+                T=T,
+                scenario_kwargs=scenario,
+                seed=seed,
+                policy=None,
+                strategy_choice_func=strategy_choice_func,
+                tau=tau,
+            )
+
+            t_idx = np.arange(len(X_ts), dtype=int)
+            rows.append(
+                pd.DataFrame(
+                    {
+                        "run_id": run_id,
+                        "t": t_idx,
+                        "X": X_ts,
+                        "I": I_ts,
+                        "X0": float(X0),
+                        "I0": float(I0),
+                    }
+                )
+            )
+            run_id += 1
+
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(
+        columns=["run_id", "t", "X", "I", "X0", "I0"]
+    )
+
+
+def beta_sensitivity_df(
+    *,
+    beta_values: np.ndarray,
+    batch_size: int = 16,
+    X0_frac: float = 0.30,
+    ratio: float = 2.3,
+    scenario_kwargs: Optional[Dict] = None,
+    seed_base: int = 0,
+) -> pd.DataFrame:
+    """Sweep beta_I and return summary statistics of final adoption X*."""
+
+    if scenario_kwargs is None:
+        scenario_kwargs = {}
+
+    out = []
+    for i, beta_I in enumerate(beta_values):
+        finals = []
+        for r in range(batch_size):
+            seed = int(seed_base + i * 10_000 + r)
+            x_final = run_network_trial(
+                X0_frac=float(X0_frac),
+                ratio=float(ratio),
+                I0=float(scenario_kwargs.get("I0", 0.05)),
+                beta_I=float(beta_I),
+                b=float(scenario_kwargs.get("b", 1.0)),
+                g_I=float(scenario_kwargs.get("g_I", 0.05)),
+                T=int(scenario_kwargs.get("T", 200)),
+                network_type=str(scenario_kwargs.get("network_type", "random")),
+                n_nodes=int(scenario_kwargs.get("n_nodes", 120)),
+                p=float(scenario_kwargs.get("p", 0.05)),
+                m=int(scenario_kwargs.get("m", 2)),
+                seed=seed,
+                tol=float(scenario_kwargs.get("tol", 1e-3)),
+                patience=int(scenario_kwargs.get("patience", 30)),
+            )
+            finals.append(float(x_final))
+
+        finals_arr = np.asarray(finals, dtype=float)
+        out.append(
+            {
+                "beta_I": float(beta_I),
+                "mean_X_final": float(np.mean(finals_arr)),
+                "std_X_final": float(np.std(finals_arr)),
+                "min_X_final": float(np.min(finals_arr)),
+                "max_X_final": float(np.max(finals_arr)),
+            }
+        )
+
+    return pd.DataFrame(out)
+
+# ------------------------------------------------------
+#   PART 1 ADDITIONS --- END
+# ------------------------------------------------------
 
 # -----------------------------
 # CLI Entrypoint

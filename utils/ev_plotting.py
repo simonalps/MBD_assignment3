@@ -175,10 +175,15 @@ def plot_phase_plot(phase_df: pd.DataFrame, out_path: Optional[str] = None) -> s
     plt.close()
     return out_path
 
+# ------------------------------------------------------
+#   PART 1 ADDITIONS
+# ------------------------------------------------------
+
 def plot_phase_plot_X0_I0(
     df: pd.DataFrame, out_path: Optional[str] = None
 ) -> str:
     """Plot heatmap from tidy DataFrame with columns ['X0','I0','X_final']."""
+
     pivot = (
         df.pivot(index="I0", columns="X0", values="X_final")
         .sort_index()
@@ -208,4 +213,60 @@ def plot_phase_plot_X0_I0(
 
     plt.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close()
+
     return out_path
+
+def plot_phase_trajectories(
+    df: pd.DataFrame,
+    *,
+    out_path: str,
+    title: str = "Phase trajectories for multiple initial conditions",
+) -> str:
+    """Plot phase-plane trajectories (X(t) vs I(t)) from `phase_trajectories_grid_df` output."""
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+
+    for run_id, g in df.groupby("run_id"):
+        ax.plot(g["X"].to_numpy(), g["I"].to_numpy(), linewidth=1.0, alpha=0.8)
+
+    ax.set_xlabel("X(t)  (adoption fraction)")
+    ax.set_ylabel("I(t)  (infrastructure level)")
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_title(title)
+
+    fig.savefig(out_path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+def plot_beta_sensitivity(
+    df: pd.DataFrame,
+    *,
+    out_path: str,
+    title: str = "Sensitivity of Final Adoption to βI",
+) -> str:
+    """Plot mean final adoption vs beta_I from `beta_sensitivity_df` output."""
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    ax.plot(
+        df["beta_I"].to_numpy(),
+        df["mean_X_final"].to_numpy(),
+        marker="o",
+        markersize=4,
+        linewidth=1.5,
+    )
+
+    ax.set_xlabel("βI (infrastructure feedback strength)")
+    ax.set_ylabel("Final adoption X*")
+    ax.set_title(title)
+    ax.set_ylim(0.0, 1.0)
+    ax.grid(True, alpha=0.25)
+    fig.set_constrained_layout(True)
+
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+    return out_path
+
+# ------------------------------------------------------
+#   PART 1 ADDITIONS --- END
+# ------------------------------------------------------

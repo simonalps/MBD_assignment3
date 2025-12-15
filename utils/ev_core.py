@@ -674,10 +674,12 @@ def phase_sweep_X0_vs_ratio(
 
     return X_final
 
+# ------------------------------------------------------
+#   PART 1 ADDITIONS
+# ------------------------------------------------------
 
 def _row_for_I0_task(args: Dict) -> np.ndarray:
     """Worker to compute one heatmap row for a fixed I0.
-
     Returns an array of mean final adoption across provided X0_values.
     """
     I0 = args["I0"]
@@ -696,7 +698,6 @@ def _row_for_I0_task(args: Dict) -> np.ndarray:
     tau = args["tau"]
 
     row = np.empty(len(X0_values))
-
     for j, X0 in enumerate(X0_values):
         finals = []
         for _ in range(batch_size):
@@ -718,11 +719,9 @@ def _row_for_I0_task(args: Dict) -> np.ndarray:
                 tau=tau,
             )
             finals.append(x_star)
-
         row[j] = float(np.mean(finals))
 
     return row
-
 
 def phase_sweep_X0_vs_I0(
     X0_values: Iterable[float],
@@ -738,7 +737,7 @@ def phase_sweep_X0_vs_I0(
     p: float = 0.05,
     m: int = 2,
     batch_size: int = 16,
-    strategy_choice_func: str = "random",
+    strategy_choice_func: str = "imitate",
     tau: float = 1.0,
     max_workers: int | None = None,
     backend: str = "process",
@@ -794,3 +793,7 @@ def phase_sweep_X0_vs_I0(
             X_final[i, :] = row
 
     return X_final
+
+# ------------------------------------------------------
+#   PART 1 ADDITIONS --- END
+# ------------------------------------------------------
