@@ -901,7 +901,6 @@ def beta_sensitivity_df(
     X0_frac: float = 0.30,
     ratio: float = 2.3,
     scenario_kwargs: Optional[Dict] = None,
-    seed_base: int = 0,
 ) -> pd.DataFrame:
     """Sweep beta_I and return summary statistics of final adoption X*."""
 
@@ -911,8 +910,8 @@ def beta_sensitivity_df(
     out = []
     for i, beta_I in enumerate(beta_values):
         finals = []
-        for r in range(batch_size):
-            seed = int(seed_base + i * 10_000 + r)
+        for j in range(batch_size):
+            seed = np.random.randint(0, 2**31 - 1)
             x_final = run_network_trial(
                 X0_frac=float(X0_frac),
                 ratio=float(ratio),
@@ -929,16 +928,13 @@ def beta_sensitivity_df(
                 tol=float(scenario_kwargs.get("tol", 1e-3)),
                 patience=int(scenario_kwargs.get("patience", 30)),
             )
-            finals.append(float(x_final))
+            finals.append(x_final)
 
-        finals_arr = np.asarray(finals, dtype=float)
+        finals_arr = np.asarray(finals)
         out.append(
             {
-                "beta_I": float(beta_I),
-                "mean_X_final": float(np.mean(finals_arr)),
-                "std_X_final": float(np.std(finals_arr)),
-                "min_X_final": float(np.min(finals_arr)),
-                "max_X_final": float(np.max(finals_arr)),
+                "beta_I": beta_I,
+                "mean_X_final": np.mean(finals_arr),
             }
         )
 
@@ -946,6 +942,168 @@ def beta_sensitivity_df(
 
 # ------------------------------------------------------
 #   PART 1 ADDITIONS --- END
+# ------------------------------------------------------
+
+# ------------------------------------------------------
+#   PART 2 ADDITIONS
+# ------------------------------------------------------
+
+def part2_run_timeseries_df(
+    *,
+    network_types: List[str],
+    seeding_strategies: List[str],
+    X0_values: np.ndarray,
+    n_runs_per_setting: int,
+    T: int,
+    seed_base: int,
+    base_params: Dict,
+    k_target: float = 6.0,
+    ws_rewire_p: float = 0.1,
+    strategy_choice_func: str = "imitate",
+    tau: float = 1.0,
+    progress: bool = True,
+) -> pd.DataFrame:
+    """Run the big sweep and return a long timeseries DataFrame.
+
+    For each (network_type, seeding_strategy, X0, run_id), simulate X(t), I(t) and store
+    one row per time step.
+
+    Returns columns:
+      network_type, seeding_strategy, run_id, seed, X0, t, X, I
+    """
+    rows: List[Dict] = []
+
+    for network_type in network_types:
+        for seeding_strategy in seeding_strategies:
+            # Map to init_method
+            if seeding_strategy == "random":
+                init_method = "random"
+            elif seeding_strategy == "degree":
+                init_method = "degree"
+            else:
+                raise ValueError(f"Unknown seeding_strategy: {seeding_strategy}")
+
+            for X0 in X0_values:
+                for run_id in range(n_runs_per_setting):
+                    seed = int(seed_base + run_id)
+
+                    # Network-specific parameters
+                    scenario = dict(base_params)
+                    scenario.update(
+                        dict(
+                            network_type=network_type,
+                            X0_frac=X0,
+                            init_method=init_method,
+                        )
+                    )
+
+                    n_nodes = scenario["n_nodes"]
+
+                    if network_type == "random":
+                        # ER: choose p so mean degree ≈ k_target
+                        scenario["p"] = k_target / (n_nodes - 1)
+                        scenario["m"] = round(k_target / 2.0)  # unused by ER
+                    elif network_type == "BA":
+                        # BA: mean degree ≈ 2m
+                        scenario["m"] = round(k_target / 2.0)
+                        scenario["p"] = scenario.get("p", 0.0)  # unused by BA
+                    elif network_type == "WS":
+                        # WS: degree k = 2m
+                        scenario["m"] = round(k_target / 2.0)
+                        scenario["p"] = ws_rewire_p
+                    else:
+                        raise ValueError(f"Unknown network_type: {network_type}")
+
+                    X_series, I_series, _df = run_timeseries_trial(
+                        T=T,
+                        scenario_kwargs=scenario,
+                        seed=seed,
+                        policy=None,
+                        strategy_choice_func=strategy_choice_func,
+                        tau=tau,
+                    )
+
+                    for t, (x_val, i_val) in enumerate(zip(X_series, I_series)):
+                        rows.append(
+                            dict(
+                                network_type=network_type,
+                                seeding_strategy=seeding_strategy,
+                                run_id=run_id,
+                                seed=seed,
+                                X0=X0,
+                                t=t,
+                                X=x_val,
+                                I=i_val,
+                            )
+                        )
+
+                    if progress:
+                        print(
+                            f"Done: net={network_type}, seed={seeding_strategy}, "
+                            f"X0={float(X0):.2f}, run_id={run_id}"
+                        )
+
+    return pd.DataFrame(rows)
+
+
+def part2_save_timeseries_csv(df: pd.DataFrame, out_path: str) -> str:
+    """Save Part 2 long timeseries DF to CSV."""
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    return out_path
+
+
+def part2_load_timeseries_csv(csv_path: str) -> pd.DataFrame:
+    """Load Part 2 long timeseries DF from CSV."""
+    return pd.read_csv(csv_path)
+
+
+def part2_final_means_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute mean final adoption X(T) vs X0 for each (network, seeding)."""
+    t_final = int(df["t"].max())
+    df_final = df[df["t"] == t_final].copy()
+    out = (
+        df_final.groupby(["network_type", "seeding_strategy", "X0"])["X"]
+        .mean()
+        .reset_index()
+        .rename(columns={"X": "mean_X_final"})
+        .sort_values(["seeding_strategy", "network_type", "X0"])
+    )
+    return out
+
+
+def part2_prob_high_df(df: pd.DataFrame, *, threshold: float = 0.8) -> pd.DataFrame:
+    """Compute P[X(T) >= threshold] vs X0 for each (network, seeding)."""
+    t_final = int(df["t"].max())
+    df_final = df[df["t"] == t_final].copy()
+    df_final["X0_round"] = df_final["X0"].round(3)
+
+    grouped = (
+        df_final.groupby(["network_type", "seeding_strategy", "X0_round"])["X"]
+        .agg(
+            n_runs="count",
+            n_high=lambda x: np.sum(x >= threshold),
+        )
+        .reset_index()
+    )
+    grouped["prob_high"] = grouped["n_high"] / grouped["n_runs"]
+    return grouped.sort_values(["seeding_strategy", "network_type", "X0_round"])
+
+
+def part2_mean_trajectories_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute mean X(t) trajectories grouped by (network_type, seeding_strategy, X0, t)."""
+    df2 = df.copy()
+    df2["X0_round"] = df2["X0"].round(3)
+    mean_traj = (
+        df2.groupby(["network_type", "seeding_strategy", "X0_round", "t"])["X"]
+        .mean()
+        .reset_index()
+        .rename(columns={"X0_round": "X0"})
+    )
+    return mean_traj
+
+# ------------------------------------------------------
+#   PART 2 ADDITIONS --- END
 # ------------------------------------------------------
 
 # -----------------------------

@@ -247,7 +247,7 @@ def plot_beta_sensitivity(
 ) -> str:
     """Plot mean final adoption vs beta_I from `beta_sensitivity_df` output."""
 
-    fig, ax = plt.subplots(figsize=(7, 4.5))
+    fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(
         df["beta_I"].to_numpy(),
         df["mean_X_final"].to_numpy(),
@@ -260,13 +260,238 @@ def plot_beta_sensitivity(
     ax.set_ylabel("Final adoption X*")
     ax.set_title(title)
     ax.set_ylim(0.0, 1.0)
-    ax.grid(True, alpha=0.25)
-    fig.set_constrained_layout(True)
 
-    fig.savefig(out_path, dpi=140)
+    fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)
     return out_path
 
 # ------------------------------------------------------
 #   PART 1 ADDITIONS --- END
+# ------------------------------------------------------
+
+# ------------------------------------------------------
+#   PART 2 ADDITIONS
+# ------------------------------------------------------
+
+def plot_part2_heatmaps_1d(
+    final_means_df: pd.DataFrame,
+    *,
+    out_path: str,
+    cmap: str = "plasma",
+) -> str:
+    """1D heatmaps of mean final adoption vs X0 (rows=seeding, cols=networks).
+
+    Expects a tidy DF from `part2_final_means_df` with columns:
+      ['network_type','seeding_strategy','X0','mean_X_final']
+    """
+    df = final_means_df.copy()
+
+    networks = sorted(df["network_type"].unique().tolist())
+    seeding_strategies = sorted(df["seeding_strategy"].unique().tolist())
+
+    n_rows = len(seeding_strategies)
+    n_cols = len(networks)
+
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(3.6 * n_cols, 1.9 * n_rows),
+        squeeze=False,
+        constrained_layout=True,
+    )
+
+    vmin, vmax = 0.0, 1.0
+    im = None
+
+    for i, seed_strat in enumerate(seeding_strategies):
+        for j, net in enumerate(networks):
+            ax = axes[i, j]
+
+            sub = df[(df["network_type"] == net) & (df["seeding_strategy"] == seed_strat)].copy()
+            sub = sub.sort_values("X0")
+            X0_vals = sub["X0"].to_numpy()
+            X_final_mean = sub["mean_X_final"].to_numpy()
+            data = X_final_mean[np.newaxis, :]
+
+            im = ax.imshow(
+                data,
+                aspect="auto",
+                origin="lower",
+                extent=[float(X0_vals[0]), float(X0_vals[-1]), 0, 1],
+                vmin=vmin,
+                vmax=vmax,
+                cmap=cmap,
+            )
+
+            major_ticks = np.arange(0.0, 1.01, 0.2)
+            ax.set_xticks(major_ticks)
+            ax.set_xticklabels([f"{x:.1f}" for x in major_ticks])
+            ax.set_yticks([])
+
+            display_net = "ER" if net == "random" else net
+            ax.set_title(f"{display_net} – {seed_strat} seeding")
+
+            if i == n_rows - 1:
+                ax.set_xlabel("Initial adoption $X_0$")
+
+    if im is not None:
+        cbar = fig.colorbar(
+            im,
+            ax=axes.ravel().tolist(),
+            shrink=0.8,
+            location="left",
+            pad=0.02,
+        )
+        cbar.set_label("Mean final adoption X(T)")
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fig.savefig(out_path, dpi=150) 
+    plt.close(fig)
+    return out_path
+
+
+def plot_part2_mean_trajectories_grid(
+    mean_traj_df: pd.DataFrame,
+    *,
+    out_path: str,
+    X0_by_seeding: Optional[dict] = None,
+) -> str:
+    """2×3 grid of mean X(t) trajectories.
+
+    mean_traj_df must have columns:
+      ['network_type','seeding_strategy','X0','t','X'] where X0 is rounded.
+    """
+    df = mean_traj_df.copy()
+
+    if X0_by_seeding is None:
+        X0_by_seeding = {
+            "degree": [0.05, 0.10, 0.15, 0.20],
+            "random": [0.10, 0.20, 0.30, 0.40, 0.50],
+        }
+
+    seeding_order = ["degree", "random"]
+    networks = ["BA", "WS", "random"]
+    net_display = {"BA": "BA", "WS": "WS", "random": "ER"}
+
+    n_rows, n_cols = 2, 3
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(4.0 * n_cols, 2.6 * n_rows),
+        squeeze=False,
+        constrained_layout=True,
+    )
+
+    t_vals = sorted(df["t"].unique())
+
+    for i, seed_strat in enumerate(seeding_order):
+        X0_vals = X0_by_seeding.get(seed_strat, [])
+        cmap = plt.get_cmap("plasma")
+        colors = {x0: cmap(k / max(len(X0_vals) - 1, 1)) for k, x0 in enumerate(X0_vals)}
+
+        df_seed = df[df["seeding_strategy"] == seed_strat]
+
+        for j, net in enumerate(networks):
+            ax = axes[i, j]
+            for x0 in X0_vals:
+                x0r = round(float(x0), 3)
+                sub = df_seed[(df_seed["network_type"] == net) & (df_seed["X0"] == x0r)].sort_values("t")
+                if sub.empty:
+                    continue
+                ax.plot(
+                    sub["t"],
+                    sub["X"],
+                    label=f"$X_0={x0:.2f}$",
+                    color=colors[x0],
+                    linewidth=1.6,
+                )
+
+            ax.set_ylim(0.0, 1.0)
+            ax.set_xlim(min(t_vals), max(t_vals))
+            ax.set_yticks([0.0, 0.5, 1.0])
+
+            if j == 0:
+                ax.set_ylabel("Adoption $X(t)$")
+            if i == n_rows - 1:
+                ax.set_xlabel("Time $t$")
+
+            ax.set_title(f"{net_display[net]} – {seed_strat} seeding")
+            ax.grid(True, alpha=0.2)
+
+        axes[i, -1].legend(
+            title="$X_0$",
+            fontsize=8,
+            title_fontsize=9,
+            loc="lower right",
+            frameon=False,
+        )
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    return out_path
+
+
+def plot_part2_prob_high_adoption_grid(
+    prob_df: pd.DataFrame,
+    *,
+    out_path: str,
+    threshold: float = 0.8,
+) -> str:
+    """2×3 grid of probability of high adoption vs X0.
+
+    prob_df expected from `part2_prob_high_df` with columns:
+      ['network_type','seeding_strategy','X0_round','n_runs','n_high','prob_high']
+    """
+    df = prob_df.copy()
+    seeding_order = ["degree", "random"]
+    networks = ["BA", "WS", "random"]
+    net_display = {"BA": "BA", "WS": "WS", "random": "ER"}
+
+    n_rows, n_cols = 2, 3
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(4.0 * n_cols, 2.6 * n_rows),
+        squeeze=False,
+        constrained_layout=True,
+    )
+
+    for i, seed_strat in enumerate(seeding_order):
+        for j, net in enumerate(networks):
+            ax = axes[i, j]
+            sub = df[(df["seeding_strategy"] == seed_strat) & (df["network_type"] == net)].copy()
+            sub = sub.sort_values("X0_round")
+
+            ax.plot(
+                sub["X0_round"],
+                sub["prob_high"],
+                marker="o",
+                linewidth=1.6,
+            )
+
+            ax.set_xlim(0.0, 1.0)
+            ax.set_ylim(-0.05, 1.05)
+
+            major_xticks = np.arange(0.0, 1.01, 0.2)
+            ax.set_xticks(major_xticks)
+            ax.set_xticklabels([f"{x:.1f}" for x in major_xticks])
+
+            ax.set_yticks([0.0, 0.25, 0.5, 0.75, 1.0])
+
+            if j == 0:
+                ax.set_ylabel(f"$P(X(T) \geq {threshold:.2f})$")
+            if i == n_rows - 1:
+                ax.set_xlabel("$X_0$")
+
+            ax.set_title(f"{net_display[net]} – {seed_strat} seeding")
+            ax.grid(True, alpha=0.2)
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    return out_path
+
+# ------------------------------------------------------
+#   PART 2 ADDITIONS --- END
 # ------------------------------------------------------

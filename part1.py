@@ -186,7 +186,6 @@ def main():
             m=3,
             init_method="random",
         ),
-        seed_base=seed_base,
     )
     print("Sweep ended!")
 
