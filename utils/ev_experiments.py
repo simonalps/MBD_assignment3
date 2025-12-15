@@ -18,6 +18,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from .ev_core import (
     EVStagHuntModel,
     set_initial_adopters,
+    set_initial_adopters_hybrid,
     final_mean_adoption_vs_ratio,
     phase_sweep_X0_vs_ratio,
     phase_sweep_X0_vs_I0,
@@ -131,13 +132,36 @@ def run_timeseries_trial(
         tau=tau,
     )
 
-    if scenario.get("X0_frac", 0.0) > 0.0:
-        set_initial_adopters(
-            model,
-            scenario["X0_frac"],
-            method=scenario.get("init_method", "random"),
-            seed=seed,
-        )
+    # -----------------------------
+    # Initial conditions / seeding: PART 3 CODE
+    # -----------------------------
+    # By default, the model supports "random" and "degree" seeding via `set_initial_adopters(...)`.
+    # For Part 3 we also support a hybrid initial condition:
+    #   - random background adoption level (X0_random)
+    #   - targeted giveaway to high-degree nodes at T=0 (X0_hubs)
+    init_method = scenario.get("init_method", "random")
+
+    if init_method == "hybrid":
+        X0_random = scenario.get("X0_frac", 0.0)
+        X0_hubs = scenario.get("X0_hubs", 0.0)
+        if (X0_random > 0.0) or (X0_hubs > 0.0):
+            set_initial_adopters_hybrid(
+                model,
+                X0_random=X0_random,
+                X0_hubs=X0_hubs,
+                seed=seed,
+                high=scenario.get("high", True),
+            )
+    else:
+        # Standard behaviour
+        if scenario.get("X0_frac", 0.0) > 0.0:
+            set_initial_adopters(
+                model,
+                scenario["X0_frac"],
+                method=init_method,
+                seed=seed,
+                high=scenario.get("high", True),
+            )
 
     for t in range(T):
         if policy is not None:
@@ -178,11 +202,14 @@ def _timeseries_trial_worker(args_dict: Dict) -> Tuple[np.ndarray, np.ndarray]:
 
 # -----------------------------
 # Experiment: Intervention trials + plotting
+# MODIFIED FOR PART 3
 # -----------------------------
 
 def collect_intervention_trials(
     n_trials: int = 10,
     T: int = 200,
+    scenario_baseline: Optional[Dict] = None,
+    scenario_intervention: Optional[Dict] = None,
     scenario_kwargs: Optional[Dict] = None,
     subsidy_params: Optional[Dict] = None,
     max_workers: int = 1,
@@ -190,9 +217,19 @@ def collect_intervention_trials(
     strategy_choice_func: str = "imitate",
     tau: float = 1.0,
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray], pd.DataFrame, pd.DataFrame]:
-    """Run baseline and subsidy trials; return raw trajectories and summary dataframes."""
+    """Run baseline and subsidy trials.
 
-    scenario = scenario_kwargs or {}
+    Key feature for Part 3: baseline and intervention can use DIFFERENT initialisation
+    (e.g., baseline = random seeds only, intervention = random + high-degree giveaway),
+    while the intervention additionally applies the subsidy policy.
+
+    Returns raw trajectories and summary dataframes.
+    """
+
+    # Backwards compatibility: if the caller still passes `scenario_kwargs`,
+    # we use it as BOTH baseline and intervention scenarios.
+    base_scenario = scenario_baseline or scenario_kwargs or {}
+    intervention_scenario = scenario_intervention or scenario_kwargs or {}
     subsidy = subsidy_params or {"start": 30, "end": 80, "delta_a0": 0.3, "delta_beta_I": 0.0}
 
     baseline_args = []
@@ -202,7 +239,7 @@ def collect_intervention_trials(
         baseline_args.append(
             {
                 "T": T,
-                "scenario_kwargs": scenario,
+                "scenario_kwargs": base_scenario,
                 "seed": seed,
                 "policy": None,
                 "strategy_choice_func": strategy_choice_func,
@@ -212,7 +249,7 @@ def collect_intervention_trials(
         subsidy_args.append(
             {
                 "T": T,
-                "scenario_kwargs": scenario,
+                "scenario_kwargs": intervention_scenario,
                 "seed": seed,
                 "policy": {"type": "subsidy", "params": subsidy},
                 "strategy_choice_func": strategy_choice_func,

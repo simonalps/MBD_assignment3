@@ -332,6 +332,76 @@ def set_initial_adopters(model, X0_frac, method="random", seed=None, high=True):
 
 
 # -----------------------------
+# CODE ADDED FOR PART 3
+# -----------------------------
+
+# -----------------------------
+# Incremental / hybrid seeding
+# -----------------------------
+def add_initial_adopters(model, X0_frac, method="degree", seed=None, high=True):
+    """Add adopters on top of existing strategies.
+    For Part 3 we need a realistic background adoption (random),
+    then a policy giveaway to a small set of high-degree agents at T=0.
+
+    Parameters
+    ----------
+    model : EVStagHuntModel
+        Model instance (must already have a network `model.G`).
+    X0_frac : float
+        Fraction of agents to force to EV adopters ("C").
+    method : {"random", "degree"}
+        Selection heuristic.
+    seed : int | None
+        RNG seed for reproducibility (only used for random selection).
+    high : bool
+        If method == "degree", True selects highest-degree nodes; False selects lowest.
+    """
+    rng = np.random.default_rng(seed)
+    agents = model.schedule.agents
+    n = len(agents)
+    k = int(round(X0_frac * n))
+
+    # Do nothing if the requested fraction is too small for this population size.
+    if k <= 0:
+        return
+
+    if method == "random":
+        idx = rng.choice(n, size=k, replace=False)
+        for i in idx:
+            agents[i].strategy = "C"
+        return
+
+    if method == "degree":
+        deg = dict(model.G.degree())
+        ordered_nodes = sorted(deg.keys(), key=lambda u: deg[u], reverse=high)
+        chosen = set(ordered_nodes[:k])
+        for a in agents:
+            if a.unique_id in chosen:
+                a.strategy = "C"
+        return
+
+    raise ValueError(f"Unknown method: {method}")
+
+def set_initial_adopters_hybrid(model, X0_random, X0_hubs, *, seed=None, high=True):
+    """Hybrid initialisation at T=0: random background + high-degree giveaway.
+
+    This implements:
+      - BASELINE background adoption: random fraction `X0_random`
+      - POLICY extra adopters: add top-degree fraction `X0_hubs`
+
+    Note: this function is deterministic given `seed` and the network realisation.
+    """
+    # Step 1: clean reset + random seeds (background adoption level)
+    set_initial_adopters(model, X0_random, method="random", seed=seed, high=True)
+
+    # Step 2: top-up with high-degree nodes (policy giveaway at T=0)
+    add_initial_adopters(model, X0_hubs, method="degree", seed=seed, high=high)
+
+# -----------------------------
+# END CODE BLOCK FOR PART 3
+# -----------------------------
+
+# -----------------------------
 # Ratio sweep helpers (computation-only)
 # -----------------------------
 #########################
