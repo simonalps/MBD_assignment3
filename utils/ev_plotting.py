@@ -495,3 +495,124 @@ def plot_part2_prob_high_adoption_grid(
 # ------------------------------------------------------
 #   PART 2 ADDITIONS --- END
 # ------------------------------------------------------
+
+# ------------------------------------------------------
+#   PART 3 ADDITIONS
+# ------------------------------------------------------
+
+def plot_part3_targeted_sweep_heatmap(
+    df: pd.DataFrame,
+    *,
+    x_col: str = "X0_hubs",
+    y_col: str = "delta_a0",
+    value_col: str = "mean_final_X",
+    title: str,
+    out_path: str,
+    cmap: str = "plasma",
+) -> str:
+    """Heatmap: mean final adoption over (X0_hubs, delta_a0) for one network."""
+    pivot = (
+        df.pivot(index=y_col, columns=x_col, values=value_col)
+        .sort_index()
+        .sort_index(axis=1)
+    )
+
+    x_vals = pivot.columns.to_numpy(dtype=float)
+    y_vals = pivot.index.to_numpy(dtype=float)
+
+    fig, ax = plt.subplots(figsize=(7.5, 5.5), constrained_layout=True)
+
+    im = ax.imshow(
+        pivot.to_numpy(),
+        origin="lower",
+        aspect="auto",
+        extent=[x_vals.min(), x_vals.max(), y_vals.min(), y_vals.max()],
+        interpolation="nearest",
+        vmin=0.0,
+        vmax=1.0,
+        cmap=cmap,
+    )
+
+    ax.set_xticks(x_vals)
+    ax.set_xticklabels([f"{x:.2f}" for x in x_vals])
+    ax.set_yticks(y_vals)
+    ax.set_yticklabels([f"{y:.1f}" for y in y_vals])
+
+    ax.set_xlabel("Targeted giveaway X_hubs")
+    ax.set_ylabel("Subsidy strength deta_a0")
+    ax.set_title(title)
+
+    cbar = fig.colorbar(im, ax=ax, shrink=0.85, location="left", pad=0.02)
+    cbar.set_label("Mean final adoption X(T)$")
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fig.savefig(out_path, dpi=200)
+    plt.close(fig)
+    return out_path
+
+
+def plot_part3_timing_sweep(
+    df: pd.DataFrame,
+    *,
+    out_path: str,
+    title: str = "Effect of subsidy timing window on adoption (mean final X)",
+) -> str:
+    """Line plot: mean final adoption vs subsidy_end, one line per network_label."""
+    fig, ax = plt.subplots(figsize=(7.5, 4.8), constrained_layout=True)
+
+    for label in sorted(df["network_label"].unique().tolist()):
+        sub = df[df["network_label"] == label].sort_values("subsidy_end")
+        ax.plot(sub["subsidy_end"], sub["mean_final_X"], marker="o", label=label)
+
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_xlabel("Subsidy end time")
+    ax.set_ylabel("Mean final adoption  X(T)")
+    ax.set_title(title)
+    ax.legend()
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fig.savefig(out_path, dpi=200)
+    plt.close(fig)
+    return out_path
+
+
+def plot_part3_tipping_probability_over_time(
+    baseline_X,
+    policy_X,
+    *,
+    threshold: float = 0.8,
+    subsidy_end: int | None = None,
+    out_path: str,
+    title: str = "High-adoption probability over time",
+) -> str:
+    """Plot P(X(t) >= threshold) over time for baseline vs policy."""
+    T = len(baseline_X[0])
+
+    base_prob = np.zeros(T)
+    pol_prob = np.zeros(T)
+
+    for t in range(T):
+        base_prob[t] = np.mean([x[t] >= threshold for x in baseline_X])
+        pol_prob[t] = np.mean([x[t] >= threshold for x in policy_X])
+
+    fig, ax = plt.subplots(figsize=(7, 4), constrained_layout=True)
+    ax.plot(base_prob, label="Baseline")
+    ax.plot(pol_prob, label="Policy")
+
+    if subsidy_end is not None:
+        ax.axvline(int(subsidy_end), linestyle="--", alpha=0.6, label="Subsidy end")
+
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_xlabel("Time")
+    ax.set_ylabel(f"P(X(t) ≥ {threshold})")
+    ax.set_title(title)
+    ax.legend()
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fig.savefig(out_path, dpi=200)
+    plt.close(fig)
+    return out_path
+
+# ------------------------------------------------------
+#   PART 3 ADDITIONS --- END
+# ------------------------------------------------------

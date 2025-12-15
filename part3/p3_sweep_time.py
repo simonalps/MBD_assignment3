@@ -90,7 +90,7 @@ def main():
     subsidy_ends = [2, 3, 4, 5]
 
     # Runtime settings
-    T = 100
+    T = 50
     n_trials = 40
     seed_base = 42
 

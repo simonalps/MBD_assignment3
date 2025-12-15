@@ -46,24 +46,24 @@ def main():
 
     csv_path = os.path.join(results_dir, "part2_all_timeseries.csv")
 
-    # # 1) One run -> CSV
-    # print("Part 2: running full sweep and writing CSV")
-    # df_all = part2_run_timeseries_df(
-    #     network_types=network_types,
-    #     seeding_strategies=seeding_strategies,
-    #     X0_values=X0_values,
-    #     n_runs_per_setting=n_runs_per_setting,
-    #     T=T,
-    #     seed_base=seed_base,
-    #     base_params=base_params,
-    #     k_target=6.0,
-    #     ws_rewire_p=0.1,
-    #     strategy_choice_func="imitate",
-    #     tau=1.0,
-    #     progress=True,
-    # )
-    # part2_save_timeseries_csv(df_all, csv_path)
-    # print(f"Saved Part 2 data to: {csv_path}")
+    # 1) One run -> CSV
+    print("Part 2: running full sweep and writing CSV")
+    df_all = part2_run_timeseries_df(
+        network_types=network_types,
+        seeding_strategies=seeding_strategies,
+        X0_values=X0_values,
+        n_runs_per_setting=n_runs_per_setting,
+        T=T,
+        seed_base=seed_base,
+        base_params=base_params,
+        k_target=6.0,
+        ws_rewire_p=0.1,
+        strategy_choice_func="imitate",
+        tau=1.0,
+        progress=True,
+    )
+    part2_save_timeseries_csv(df_all, csv_path)
+    print(f"Saved Part 2 data to: {csv_path}")
 
     # Load back data
     df = part2_load_timeseries_csv(csv_path)

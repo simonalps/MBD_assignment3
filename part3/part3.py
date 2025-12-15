@@ -81,7 +81,7 @@ def main():
     os.makedirs("results", exist_ok=True)
     os.makedirs("plots", exist_ok=True)
 
-    T = 100
+    T = 50
     n_trials = 40
     seed_base = 42
 

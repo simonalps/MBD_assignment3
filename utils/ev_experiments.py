@@ -1106,6 +1106,197 @@ def part2_mean_trajectories_df(df: pd.DataFrame) -> pd.DataFrame:
 #   PART 2 ADDITIONS --- END
 # ------------------------------------------------------
 
+# ------------------------------------------------------
+#   PART 3 ADDITIONS
+# ------------------------------------------------------
+
+NETWORK_LABELS_PART3 = {"random": "ER", "BA": "BA", "WS": "WS"}
+
+def part3_set_network_params(network_type: str, n_nodes: int, *, k_target: float = 6.0, ws_rewire_p: float = 0.1) -> Dict:
+    """Match Part 2: target mean degree ~k_target for ER/BA/WS."""
+    if network_type == "random":
+        return {"p": k_target / (n_nodes - 1), "m": int(round(k_target / 2.0))}  # m unused for ER
+    if network_type == "BA":
+        return {"m": int(round(k_target / 2.0)), "p": 0.0}  # p unused for BA
+    if network_type == "WS":
+        return {"m": int(round(k_target / 2.0)), "p": float(ws_rewire_p)}  # k=2m, p=rewire prob
+    raise ValueError(f"Unknown network_type: {network_type}")
+
+def _part3_mean_final_X(
+    *,
+    scenario: Dict,
+    T: int,
+    n_trials: int,
+    seed_base: int,
+    subsidy_start: int,
+    subsidy_end: int,
+    delta_a0: float,
+    delta_beta_I: float = 0.0,
+    strategy_choice_func: str = "imitate",
+    tau: float = 1.0,
+) -> float:
+    """Run n_trials and return mean final adoption X(T-1)."""
+    policy = policy_subsidy_factory(
+        start=int(subsidy_start),
+        end=int(subsidy_end),
+        delta_a0=float(delta_a0),
+        delta_beta_I=float(delta_beta_I),
+    )
+    finals: List[float] = []
+    for i in range(int(n_trials)):
+        seed = int(seed_base + i)
+        X, _I, _df = run_timeseries_trial(
+            T=int(T),
+            scenario_kwargs=scenario,
+            seed=seed,
+            policy=policy,
+            strategy_choice_func=strategy_choice_func,
+            tau=tau,
+        )
+        finals.append(float(X[-1]))
+    return float(np.mean(finals)) if finals else float("nan")
+
+def part3_targeted_sweep_mean_final_df(
+    *,
+    network_types: List[str],
+    base_params: Dict,
+    X0_random: float,
+    x0_hubs_vals: np.ndarray,
+    delta_a0_vals: np.ndarray,
+    subsidy_start: int,
+    subsidy_end: int,
+    T: int,
+    n_trials: int,
+    seed_base: int,
+    k_target: float = 6.0,
+    ws_rewire_p: float = 0.1,
+    strategy_choice_func: str = "imitate",
+    tau: float = 1.0,
+    progress: bool = True,
+) -> pd.DataFrame:
+    """Sweep X0_hubs (x) and delta_a0 (y) for each network, return tidy DF."""
+    rows: List[Dict] = []
+    n_nodes = int(base_params["n_nodes"])
+
+    for net in network_types:
+        net_kwargs = part3_set_network_params(net, n_nodes, k_target=k_target, ws_rewire_p=ws_rewire_p)
+        for da0 in delta_a0_vals:
+            for x0h in x0_hubs_vals:
+                scenario = dict(
+                    base_params,
+                    network_type=net,
+                    **net_kwargs,
+                    init_method="hybrid",
+                    X0_frac=float(X0_random),
+                    X0_hubs=float(x0h),
+                    high=True,
+                )
+
+                mean_final = _part3_mean_final_X(
+                    scenario=scenario,
+                    T=T,
+                    n_trials=n_trials,
+                    seed_base=seed_base,
+                    subsidy_start=subsidy_start,
+                    subsidy_end=subsidy_end,
+                    delta_a0=float(da0),
+                    delta_beta_I=0.0,
+                    strategy_choice_func=strategy_choice_func,
+                    tau=tau,
+                )
+
+                rows.append(
+                    dict(
+                        network_type=net,
+                        network_label=NETWORK_LABELS_PART3.get(net, net),
+                        X0_random=float(X0_random),
+                        X0_hubs=float(x0h),
+                        delta_a0=float(da0),
+                        subsidy_start=int(subsidy_start),
+                        subsidy_end=int(subsidy_end),
+                        T=int(T),
+                        n_trials=int(n_trials),
+                        mean_final_X=float(mean_final),
+                    )
+                )
+
+                if progress:
+                    print(
+                        f"[part3 sweep] net={net} X0_hubs={float(x0h):.3f} "
+                        f"delta_a0={float(da0):.3f} -> mean X(T)={mean_final:.3f}"
+                    )
+
+    return pd.DataFrame(rows)
+
+def part3_timing_sweep_df(
+    *,
+    network_types: List[str],
+    base_params: Dict,
+    X0_random: float,
+    X0_hubs: float,
+    delta_a0: float,
+    subsidy_ends: List[int],
+    T: int,
+    n_trials: int,
+    seed_base: int,
+    k_target: float = 6.0,
+    ws_rewire_p: float = 0.1,
+    strategy_choice_func: str = "imitate",
+    tau: float = 1.0,
+    progress: bool = True,
+) -> pd.DataFrame:
+    """Sweep subsidy end times and return tidy DF with mean final adoption."""
+    rows: List[Dict] = []
+    n_nodes = int(base_params["n_nodes"])
+
+    for net in network_types:
+        net_kwargs = part3_set_network_params(net, n_nodes, k_target=k_target, ws_rewire_p=ws_rewire_p)
+
+        scenario = dict(
+            base_params,
+            network_type=net,
+            **net_kwargs,
+            init_method="hybrid",
+            X0_frac=float(X0_random),
+            X0_hubs=float(X0_hubs),
+            high=True,
+        )
+
+        for end in subsidy_ends:
+            mean_final = _part3_mean_final_X(
+                scenario=scenario,
+                T=T,
+                n_trials=n_trials,
+                seed_base=seed_base,
+                subsidy_start=0,
+                subsidy_end=int(end),
+                delta_a0=float(delta_a0),
+                delta_beta_I=0.0,
+                strategy_choice_func=strategy_choice_func,
+                tau=tau,
+            )
+            rows.append(
+                dict(
+                    network_type=net,
+                    network_label=NETWORK_LABELS_PART3.get(net, net),
+                    subsidy_end=int(end),
+                    X0_random=float(X0_random),
+                    X0_hubs=float(X0_hubs),
+                    delta_a0=float(delta_a0),
+                    T=int(T),
+                    n_trials=int(n_trials),
+                    mean_final_X=float(mean_final),
+                )
+            )
+            if progress:
+                print(f"[part3 timing] {NETWORK_LABELS_PART3.get(net, net)} end={end:>3} -> mean X(T)={mean_final:.3f}")
+
+    return pd.DataFrame(rows)
+
+# ------------------------------------------------------
+#   PART 3 ADDITIONS --- END
+# ------------------------------------------------------
+
 # -----------------------------
 # CLI Entrypoint
 # -----------------------------
