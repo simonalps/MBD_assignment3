@@ -9,7 +9,7 @@ This repository contains the code and experiments for **Assignment 3**. The proj
 ### 1. Clone the repository
 ```bash
 git clone https://github.com/simonalps/MBD_assignment3
-cd <MBD_assignment3>
+cd MBD_assignment3
 ```
 
 ### 2. Create and activate the virtual environment
@@ -34,6 +34,8 @@ pip install -r requirements.txt
 ```
 The project relies only on standard Python libraries and does not require any external datasets.
 
+---
+
 ## Running the Experiments
 
 All experiments should be run from the repository root directory.
@@ -46,8 +48,6 @@ This part investigates the intrinsic dynamics of the adoption model in the absen
 ```bash
 python part1.py
 ```
-
-The βI sensitivity analysis should be run separately, though. Sorry! :D
 
 Outputs:
 Heatmaps of final adoption over (X0, I0)
@@ -70,7 +70,7 @@ python part2.py
 Outputs:
 Adoption heatmaps
 Mean adoption trajectories
-Probability of reaching a high-adoption equilibrium
+Probability of reaching a high-adoption equilibrium.
 
 Results are saved to:
 results/part2/

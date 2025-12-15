@@ -134,10 +134,10 @@ def run_timeseries_trial(
     )
 
     # -----------------------------
-    # Initial conditions / seeding: PART 3 CODE
+    # Initial conditions / seeding: PART 3 CODE ADDED
     # -----------------------------
     # By default, the model supports "random" and "degree" seeding via `set_initial_adopters(...)`.
-    # For Part 3 we also support a hybrid initial condition:
+    # For Part 3 we also added a hybrid initial condition:
     #   - random background adoption level (X0_random)
     #   - targeted giveaway to high-degree nodes at T=0 (X0_hubs)
     init_method = scenario.get("init_method", "random")
@@ -220,15 +220,13 @@ def collect_intervention_trials(
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray], pd.DataFrame, pd.DataFrame]:
     """Run baseline and subsidy trials.
 
-    Key feature for Part 3: baseline and intervention can use DIFFERENT initialisation
+    Added feature for Part 3: baseline and intervention can use different initialisation
     (e.g., baseline = random seeds only, intervention = random + high-degree giveaway),
     while the intervention additionally applies the subsidy policy.
 
     Returns raw trajectories and summary dataframes.
     """
 
-    # Backwards compatibility: if the caller still passes `scenario_kwargs`,
-    # we use it as BOTH baseline and intervention scenarios.
     base_scenario = scenario_baseline or scenario_kwargs or {}
     intervention_scenario = scenario_intervention or scenario_kwargs or {}
     subsidy = subsidy_params or {"start": 30, "end": 80, "delta_a0": 0.3, "delta_beta_I": 0.0}
