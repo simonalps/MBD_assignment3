@@ -87,7 +87,7 @@ def main():
     delta_a0 = 0.40
 
     # Timing sweep
-    subsidy_ends = [5, 10, 15, 20]
+    subsidy_ends = [2, 3, 4, 5]
 
     # Runtime settings
     T = 100
@@ -149,7 +149,7 @@ def main():
 
     plt.ylim(-0.02, 1.02)
     plt.xlabel("Subsidy end time")
-    plt.ylabel("Mean final adoption  E[X(T)]")
+    plt.ylabel("Mean final adoption  X(T)")
     plt.title("Effect of subsidy timing window on adoption (mean final X)")
     plt.legend()
     plt.tight_layout()
