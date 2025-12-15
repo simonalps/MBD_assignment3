@@ -18,6 +18,7 @@ python -m venv venv
 ```
 
 Activate the environment:
+
 On Windows:
 ```bash
 venv\Scripts\activate
@@ -50,13 +51,21 @@ python part1.py
 ```
 
 Outputs:
+
 Heatmaps of final adoption over (X0, I0)
+
 Heatmaps of final adoption over (X0, a(I)/b)
+
 Phase trajectories (I(t), X(t))
+
 Sensitivity analysis for infrastructure feedback strength βI​.
 
+
+
 Results are saved to:
+
 results/part1/
+
 plots/part1/
 
 ### Part 2 – Network Structure Effects
@@ -68,12 +77,18 @@ python part2.py
 ```
 
 Outputs:
+
 Adoption heatmaps
+
 Mean adoption trajectories
+
 Probability of reaching a high-adoption equilibrium.
 
+
 Results are saved to:
+
 results/part2/
+
 plots/part2/
 
 ### Part 3 – Policy Intervention Analysis
@@ -85,12 +100,18 @@ python part3.py
 ```
 
 Outputs:
+
 Baseline vs intervention charts
+
 Policy intensity comparisons
+
 Sensitivity to intervention timing windows.
 
+
 Results are saved to:
+
 results/part3/
+
 plots/part3/
 
 ---
